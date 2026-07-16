@@ -1,0 +1,85 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ai-review:
+    name: Review PR diff with Ollama
+    runs-on: ubuntu-latest
+    env:
+      OLLAMA_BASE_URL: ${{ secrets.OLLAMA_BASE_URL }}
+      OLLAMA_MODEL: granite3.2:latest
+      LOG_LEVEL: INFO
+      DIFF_OUTPUT: artifacts/pr.diff
+      FILES_OUTPUT: artifacts/changed_files.txt
+      REVIEW_RESULT_FILE: artifacts/review_result.json
+      REVIEW_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      REVIEW_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Generate PR diff
+        id: diff
+        run: |
+          python scripts/generate_diff.py \
+            --base "${REVIEW_BASE_SHA}" \
+            --head "${REVIEW_HEAD_SHA}" \
+            --output "${DIFF_OUTPUT}" \
+            --files-output "${FILES_OUTPUT}"
+
+      - name: Run AI review
+        id: review
+        run: |
+          set +e
+          python scripts/run_ai_review.py --diff-file "${DIFF_OUTPUT}" --result-file "${REVIEW_RESULT_FILE}"
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Publish review (PR comment + summary)
+        if: always()
+        run: |
+          python scripts/publish_review.py \
+            --result-file "${REVIEW_RESULT_FILE}" \
+            --repo "${{ github.repository }}" \
+            --pr-number "${{ github.event.pull_request.number }}"
+
+      - name: Upload review artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-review-${{ github.event.pull_request.number }}
+          path: artifacts/
+          if-no-files-found: warn
+
+      - name: Fail job when review is FAIL
+        if: steps.review.outputs.exit_code != '0'
+        run: |
+          echo "AI review decision is FAIL (exit ${{ steps.review.outputs.exit_code }})."
+          exit 1

@@ -1,0 +1,16 @@
+diff --git a/app/health.py b/app/health.py
+index 1111111..2222222 100644
+--- a/app/health.py
++++ b/app/health.py
+@@ -1,6 +1,11 @@
+ from fastapi import APIRouter
+ 
+ router = APIRouter()
+ 
++
+ @router.get("/health")
+-def health() -> dict[str, str]:
+-    return {"status": "ok"}
++def health() -> dict[str, str]:
++    """Liveness probe for load balancers."""
++    return {"status": "ok"}

@@ -1,0 +1,34 @@
+diff --git a/src/app.js b/src/app.js
+index 1111111..2222222 100644
+--- a/src/app.js
++++ b/src/app.js
+@@ -1,3 +1,4 @@
++console.log("keep me");
+ export function main() {
+   return 1;
+ }
+diff --git a/node_modules/leftpad/index.js b/node_modules/leftpad/index.js
+index 1111111..2222222 100644
+--- a/node_modules/leftpad/index.js
++++ b/node_modules/leftpad/index.js
+@@ -1,2 +1,3 @@
++// should be ignored
+ module.exports = function () {};
+diff --git a/app.min.js b/app.min.js
+index 1111111..2222222 100644
+--- a/app.min.js
++++ b/app.min.js
+@@ -1 +1 @@
+-var a=1;
++var a=2;
+diff --git a/assets/logo.png b/assets/logo.png
+new file mode 100644
+index 0000000..abcdef0
+Binary files /dev/null and b/assets/logo.png differ
+diff --git a/.venv/lib/python3.12/site-packages/x.py b/.venv/lib/python3.12/site-packages/x.py
+index 1111111..2222222 100644
+--- a/.venv/lib/python3.12/site-packages/x.py
++++ b/.venv/lib/python3.12/site-packages/x.py
+@@ -1 +1 @@
+-x=1
++x=2
