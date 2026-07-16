@@ -161,7 +161,10 @@ class Reviewer:
             )
             content = response.choices[0].message.content
             if not content:
-                raise RuntimeError("LLM returned empty content")
+                raise RuntimeError(
+                    "OpenAI returned empty content "
+                    f"(model={self.settings.openai_model}, files={len(parsed.files)})"
+                )
             return content.strip()
 
         return retry_with_timeout(

@@ -41,9 +41,17 @@ Hard rules:
    and new-file line that appear in the diff.
 3. Return ONLY valid JSON matching this schema (no markdown fences, no prose):
 {json.dumps(schema, indent=2)}
-4. Prefer HIGH/CRITICAL for security issues (injection, secrets). Use LOW/MEDIUM
-   for style and maintainability unless they create real risk.
-5. If the change is safe with only minor notes, use low severities and a high score.
+4. Severity guidance (be conservative):
+   - CRITICAL/HIGH: real exploitable bugs only — SQL/command injection, hardcoded
+     live secrets in source, auth bypass, remote code execution.
+   - MEDIUM: clear maintainability or correctness risks.
+   - LOW: style, docs, minor suggestions.
+5. Do NOT mark these as HIGH/CRITICAL:
+   - Using GitHub Actions secrets like ${{ secrets.OPENAI_API_KEY }} (that is correct).
+   - Missing validation you cannot see outside the diff.
+   - Documentation wording or test rename nits.
+6. If the change is safe with only minor notes, use LOW severities (or empty issues)
+   and a high score. Prefer PASS when there is no real HIGH/CRITICAL risk.
 """
 
 
