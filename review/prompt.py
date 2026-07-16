@@ -1,4 +1,4 @@
-"""Prompt construction for Ollama code review."""
+"""Prompt construction for OpenAI code review."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Tests for Phase 2 CI helper scripts (no live GitHub/Ollama required)."""
+"""Tests for Phase 2 CI helper scripts (no live GitHub/OpenAI required)."""
 
 from __future__ import annotations
 
