@@ -1,41 +1,34 @@
 # AI-Powered CI/CD Pipeline
 
-Automated PR code review with **OpenAI** (`gpt-4o-mini`), then (later phases) auto-merge and
-server deployment via GitHub Actions.
+Automated push-based code review with **OpenAI** and **squash auto-merge on PASS**.
 
-## Architecture (current)
+Deploy to server is deferred for later.
+
+## Architecture
 
 ```
-Developer → feature branch → Open PR → main
+Developer → push to feature branch (not main)
                 ↓
-     Workflow: ai-review.yml  (Phase 2)
+     Workflow: ai-review.yml
                 ↓
-     checkout → git diff(base...head) → review/ (Phase 1)
+     git diff vs main → OpenAI review → PASS / FAIL
                 ↓
-     OpenAI API
+     Workflow logs + step summary
                 ↓
-          PASS / FAIL
-                ↓
-     PR comment + Actions summary + logs
+     PASS → squash merge into main
+     FAIL → stop (no merge)
 ```
 
-## LLM provider: OpenAI
+No pull request is required — the pipeline runs on every push to a non-`main` branch.
 
-| Variable | Default |
-|----------|---------|
-| `OPENAI_API_KEY` | _(required)_ |
-| `OPENAI_MODEL` | `gpt-4o-mini` |
+## Auto-merge (squash)
 
-Runs on **GitHub-hosted** `ubuntu-latest` — no self-hosted runner needed.
-
-## Local usage
-
-```bash
-pip install -e ".[dev]"
-pytest -q
-export OPENAI_API_KEY=sk-...
-python -m review.reviewer --diff-file tests/sample_diffs/sql_injection.diff --json
-```
+| Setting | Value |
+|---------|--------|
+| Strategy | `git merge --squash` into `main`, then push |
+| On **PASS** | Branch squash-merged into `main` automatically |
+| On **FAIL** | Workflow fails; merge blocked; feedback in logs |
+| Infrastructure failure | Never merges (fail-closed) |
 
 ## GitHub Secrets
 
@@ -43,9 +36,31 @@ python -m review.reviewer --diff-file tests/sample_diffs/sql_injection.diff --js
 |--------|---------|
 | `OPENAI_API_KEY` | OpenAI API key |
 
-## How to trigger AI review
+`GITHUB_TOKEN` is provided by Actions. The review workflow needs `contents: write` to push the squash merge to `main`.
 
-1. Create a feature branch and push a change
-2. Open a Pull Request targeting `main`
-3. Workflow **AI Code Review** runs automatically
-4. AI posts a PASS/FAIL comment on the PR
+## How to use
+
+1. Push commits to a feature branch (not `main`)
+2. AI review runs on the diff against `main`
+3. **PASS** → branch squash-merged into `main` automatically
+4. **FAIL** → fix code and push again; feedback appears in workflow logs
+
+## Local usage
+
+```bash
+pip install -e ".[dev]"
+pytest -q
+export OPENAI_API_KEY=sk-...
+python -m review.reviewer --diff-file tests/sample_diffs/clean_code.diff --json
+python scripts/merge_branch.py --result-file artifacts/review_result.json --branch feature-x --dry-run
+```
+
+## Environment variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `OPENAI_API_KEY` | _(required)_ | OpenAI API key |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Model id |
+| `MAX_DIFF_LINES` | `2000` | Diff size cap |
+| `LLM_TIMEOUT_SECONDS` | `90` | LLM timeout |
+| `LOG_LEVEL` | `INFO` | Logging level |

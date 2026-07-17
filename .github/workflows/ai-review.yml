@@ -1,33 +1,31 @@
 name: AI Code Review
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
+  push:
+    branches-ignore:
+      - main
 
 permissions:
-  contents: read
-  pull-requests: write
+  contents: write
 
 concurrency:
-  group: ai-review-${{ github.event.pull_request.number || github.ref }}
+  group: ai-review-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   ai-review:
-    name: Review PR diff with OpenAI
+    name: Review push diff with OpenAI
     runs-on: ubuntu-latest
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_MODEL: gpt-4o-mini
       LOG_LEVEL: INFO
-      DIFF_OUTPUT: artifacts/pr.diff
+      DIFF_OUTPUT: artifacts/push.diff
       FILES_OUTPUT: artifacts/changed_files.txt
       REVIEW_RESULT_FILE: artifacts/review_result.json
-      REVIEW_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-      REVIEW_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REVIEW_BASE_SHA: origin/main
+      REVIEW_HEAD_SHA: ${{ github.sha }}
+      BRANCH_NAME: ${{ github.ref_name }}
 
     steps:
       - name: Checkout repository
@@ -45,7 +43,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Generate PR diff
+      - name: Generate push diff against main
         id: diff
         run: |
           python scripts/generate_diff.py \
@@ -62,24 +60,34 @@ jobs:
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
         continue-on-error: true
 
-      - name: Publish review (PR comment + summary)
+      - name: Publish review feedback
         if: always()
         run: |
-          python scripts/publish_review.py \
+          python scripts/publish_review.py --result-file "${REVIEW_RESULT_FILE}"
+
+      - name: Configure git for squash merge
+        if: steps.review.outputs.exit_code == '0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Squash merge into main on PASS
+        if: steps.review.outputs.exit_code == '0'
+        run: |
+          python scripts/merge_branch.py \
             --result-file "${REVIEW_RESULT_FILE}" \
-            --repo "${{ github.repository }}" \
-            --pr-number "${{ github.event.pull_request.number }}"
+            --branch "${BRANCH_NAME}"
 
       - name: Upload review artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ai-review-${{ github.event.pull_request.number }}
+          name: ai-review-${{ github.ref_name }}-${{ github.sha }}
           path: artifacts/
           if-no-files-found: warn
 
       - name: Fail job when review is FAIL
         if: steps.review.outputs.exit_code != '0'
         run: |
-          echo "AI review decision is FAIL (exit ${{ steps.review.outputs.exit_code }})."
+          echo "AI review decision is FAIL (exit ${{ steps.review.outputs.exit_code }}). Merge blocked."
           exit 1
