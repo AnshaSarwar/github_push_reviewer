@@ -1,4 +1,4 @@
-"""Publish AI review results as a PR comment (and always to logs)."""
+"""Publish AI review results to workflow logs and the GitHub step summary."""
 
 from __future__ import annotations
 
@@ -7,8 +7,6 @@ import json
 import logging
 import os
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +15,7 @@ from review.utils import mask_secrets, setup_logging
 logger = logging.getLogger("review.ci.publish")
 
 
-def format_pr_comment(payload: dict[str, Any]) -> str:
+def format_review_summary(payload: dict[str, Any]) -> str:
     decision = str(payload.get("decision", "FAIL")).upper()
     icon = "[PASS]" if decision == "PASS" else "[FAIL]"
     score = payload.get("score", "n/a")
@@ -51,50 +49,12 @@ def format_pr_comment(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def post_pr_comment(*, repo: str, pr_number: int, body: str, token: str) -> None:
-    url = f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments"
-    data = json.dumps({"body": body}).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=data,
-        method="POST",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "push-reviewer-ai-review",
-            "Content-Type": "application/json",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            logger.info("Posted PR comment: HTTP %s", response.status)
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"GitHub API error {exc.code}: {mask_secrets(detail)}") from exc
-
-
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Publish AI review to PR + logs")
+    parser = argparse.ArgumentParser(description="Publish AI review to logs and step summary")
     parser.add_argument(
         "--result-file",
         type=Path,
         default=Path(os.environ.get("REVIEW_RESULT_FILE", "artifacts/review_result.json")),
-    )
-    parser.add_argument(
-        "--repo",
-        default=os.environ.get("GITHUB_REPOSITORY", ""),
-        help="owner/repo",
-    )
-    parser.add_argument(
-        "--pr-number",
-        type=int,
-        default=int(os.environ["PR_NUMBER"]) if os.environ.get("PR_NUMBER") else 0,
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print comment body only; do not call GitHub API",
     )
     return parser.parse_args(argv)
 
@@ -108,27 +68,16 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     payload = json.loads(args.result_file.read_text(encoding="utf-8"))
-    body = format_pr_comment(payload)
+    body = format_review_summary(payload)
     print(body)
 
     summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_file:
         with Path(summary_file).open("a", encoding="utf-8") as handle:
-            handle.write("\n### Published PR comment preview\n\n")
+            handle.write("\n### AI review feedback\n\n")
             handle.write(body)
             handle.write("\n")
 
-    token = os.environ.get("GITHUB_TOKEN", "")
-    dry_run = args.dry_run or not token or not args.repo or not args.pr_number
-    if dry_run:
-        logger.info("Dry-run: skipping GitHub API comment (missing token/repo/PR or --dry-run)")
-        return 0
-
-    try:
-        post_pr_comment(repo=args.repo, pr_number=args.pr_number, body=body, token=token)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Failed to publish PR comment: %s", mask_secrets(str(exc)))
-        return 1
     return 0
 
 
