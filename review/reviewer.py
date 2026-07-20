@@ -1,5 +1,5 @@
 """
-Orchestrate filtered-diff → OpenAI → validated ReviewResult.
+Orchestrate filtered-diff → Groq LLM → validated ReviewResult.
 
 This module has no git / GitHub / CI knowledge. Callers supply raw diff text.
 """
@@ -32,7 +32,7 @@ from review.utils import mask_secrets, retry_with_timeout, setup_logging
 
 
 class Reviewer:
-    """OpenAI-backed code reviewer with fail-closed semantics."""
+    """Groq-backed code reviewer with fail-closed semantics."""
 
     def __init__(
         self,
@@ -48,10 +48,11 @@ class Reviewer:
     @property
     def client(self) -> OpenAI:
         if self._client is None:
-            if not self.settings.openai_api_key:
-                raise RuntimeError("OPENAI_API_KEY is not set")
+            if not self.settings.groq_api_key:
+                raise RuntimeError("GROQ_API_KEY is not set")
             self._client = OpenAI(
-                api_key=self.settings.openai_api_key,
+                api_key=self.settings.groq_api_key,
+                base_url=self.settings.groq_base_url,
                 timeout=self.settings.llm_timeout_seconds,
             )
         return self._client
@@ -150,7 +151,7 @@ class Reviewer:
             if self._llm_generate is not None:
                 return self._llm_generate(parsed)
             response = self.client.chat.completions.create(
-                model=self.settings.openai_model,
+                model=self.settings.groq_model,
                 temperature=0,
                 response_format={"type": "json_object"},
                 messages=[
@@ -161,8 +162,8 @@ class Reviewer:
             content = response.choices[0].message.content
             if not content:
                 raise RuntimeError(
-                    "OpenAI returned empty content "
-                    f"(model={self.settings.openai_model}, files={len(parsed.files)})"
+                    "Groq returned empty content "
+                    f"(model={self.settings.groq_model}, files={len(parsed.files)})"
                 )
             return content.strip()
 
@@ -171,7 +172,7 @@ class Reviewer:
             retries=self.settings.llm_max_retries,
             timeout_seconds=self.settings.llm_timeout_seconds,
             logger=self.logger,
-            operation="openai.chat.completions.create",
+            operation="groq.chat.completions.create",
         )
 
     @staticmethod
@@ -206,7 +207,7 @@ def review_diff_file(path: Path, settings: Settings | None = None) -> ReviewResu
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m review.reviewer",
-        description="AI code review for a unified git diff file (OpenAI)",
+        description="AI code review for a unified git diff file (Groq)",
     )
     parser.add_argument(
         "--diff-file",

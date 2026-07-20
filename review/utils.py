@@ -51,7 +51,7 @@ def retry_with_timeout(
     """
     Run ``fn`` with a soft timeout budget and limited retries.
 
-    OpenAI SDK calls are blocking; we enforce wall-clock budget across
+    Groq SDK calls are blocking; we enforce wall-clock budget across
     attempts and re-raise the last error if all attempts fail.
     """
     log = logger or logging.getLogger("review")
