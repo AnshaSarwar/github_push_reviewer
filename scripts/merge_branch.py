@@ -5,8 +5,6 @@ Uses local git (fetch, checkout main, merge --squash, commit, push) so no
 pull request is required.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import logging
@@ -21,17 +19,17 @@ from review.utils import mask_secrets, setup_logging
 REPO_ROOT = Path(__file__).resolve().parent.parent
 logger = logging.getLogger("review.ci.merge")
 
-
+# Custom exception for merge errors
 class MergeError(RuntimeError):
     """Raised when merge preconditions fail or git rejects the merge."""
 
-
+# Load the review result from a file
 def load_review_result(path: Path) -> dict[str, Any]:
     if not path.is_file():
         raise MergeError(f"review result file not found: {path}")
     return json.loads(path.read_text(encoding="utf-8"))
 
-
+# Determine if the review result indicates a merge should be attempted
 def should_merge(payload: dict[str, Any]) -> tuple[bool, str]:
     """Return (ok_to_merge, reason_if_not)."""
     decision = str(payload.get("decision", "")).upper()
@@ -41,7 +39,7 @@ def should_merge(payload: dict[str, Any]) -> tuple[bool, str]:
         return False, f"AI review decision is {decision or 'UNKNOWN'} — merge blocked"
     return True, ""
 
-
+# Run a git command and return the output
 def run_git(args: list[str], *, cwd: Path = REPO_ROOT) -> str:
     result = subprocess.run(
         ["git", *args],
@@ -55,7 +53,7 @@ def run_git(args: list[str], *, cwd: Path = REPO_ROOT) -> str:
         raise MergeError(f"git {' '.join(args)} failed: {mask_secrets(detail)}")
     return result.stdout
 
-
+# Squash-merge origin/<branch> into main and push. Returns the new commit SHA.
 def squash_merge_branch(
     *,
     branch: str,
@@ -78,7 +76,7 @@ def squash_merge_branch(
     run_git(["push", "origin", "main"], cwd=repo_root)
     return sha
 
-
+# Write a summary of the merge to the GitHub step summary
 def write_merge_summary(merged: bool, message: str) -> None:
     summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
     if not summary_file:
@@ -91,7 +89,7 @@ def write_merge_summary(merged: bool, message: str) -> None:
             handle.write(f"**Not merged:** {message}\n\n")
         handle.write(f"{mask_secrets(message)}\n")
 
-
+# Parse command line arguments
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Squash-merge branch into main after AI PASS")
     parser.add_argument(
@@ -116,7 +114,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     return parser.parse_args(argv)
 
-
+# Main function to squash-merge the branch into main
 def main(argv: list[str] | None = None) -> int:
     setup_logging(os.environ.get("LOG_LEVEL", "INFO"))
     args = parse_args(argv)

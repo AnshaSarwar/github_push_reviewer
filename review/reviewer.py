@@ -4,7 +4,6 @@ Orchestrate filtered-diff → OpenAI → validated ReviewResult.
 This module has no git / GitHub / CI knowledge. Callers supply raw diff text.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

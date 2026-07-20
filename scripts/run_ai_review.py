@@ -6,8 +6,6 @@ Exit codes:
   1 = FAIL (code quality or infrastructure)
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import os
@@ -18,7 +16,7 @@ from review.models import ReviewResult, Status
 from review.reviewer import Reviewer
 from review.utils import mask_secrets, setup_logging
 
-
+# Map internal ReviewResult to the project-facing decision schema
 def to_decision_payload(result: ReviewResult) -> dict:
     """Map internal ReviewResult to the project-facing decision schema."""
     comments: list[str] = []
@@ -38,7 +36,7 @@ def to_decision_payload(result: ReviewResult) -> dict:
         "issues": [i.model_dump(mode="json") for i in result.issues],
     }
 
-
+# Write outputs to files
 def write_github_outputs(result: ReviewResult, decision: dict) -> None:
     output_file = os.environ.get("GITHUB_OUTPUT")
     if output_file:
@@ -59,7 +57,7 @@ def write_github_outputs(result: ReviewResult, decision: dict) -> None:
                 for comment in decision["comments"]:
                     handle.write(f"- {mask_secrets(str(comment))}\n")
 
-
+# Parse command line arguments
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run AI review for CI")
     parser.add_argument("--diff-file", type=Path, required=True)
@@ -70,7 +68,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     return parser.parse_args(argv)
 
-
+# Main function to run the AI review
 def main(argv: list[str] | None = None) -> int:
     setup_logging(os.environ.get("LOG_LEVEL", "INFO"))
     args = parse_args(argv)

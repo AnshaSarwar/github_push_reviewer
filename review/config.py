@@ -1,7 +1,5 @@
 """Environment-driven settings for the AI review pipeline."""
 
-from __future__ import annotations
-
 from functools import lru_cache
 
 from pydantic import Field
