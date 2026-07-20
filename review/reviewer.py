@@ -1,10 +1,9 @@
 """
-Orchestrate filtered-diff → Ollama → validated ReviewResult.
+Orchestrate filtered-diff → OpenAI → validated ReviewResult.
 
 This module has no git / GitHub / CI knowledge. Callers supply raw diff text.
 """
 
-from __future__ import annotations
 
 import argparse
 import json
@@ -13,6 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from openai import OpenAI
 from pydantic import ValidationError
 
 from review.config import Settings, get_settings
@@ -27,22 +27,34 @@ from review.models import (
     finalize_from_llm,
     infrastructure_failure,
 )
-from review.ollama_client import call_ollama
 from review.prompt import build_system_prompt, build_user_prompt
 from review.utils import mask_secrets, retry_with_timeout, setup_logging
 
 
 class Reviewer:
-    """Ollama-backed code reviewer with fail-closed semantics."""
+    """OpenAI-backed code reviewer with fail-closed semantics."""
 
     def __init__(
         self,
         settings: Settings | None = None,
+        client: OpenAI | None = None,
         llm_generate: Callable[[ParsedDiff], str] | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         self.logger = setup_logging(self.settings.log_level)
+        self._client = client
         self._llm_generate = llm_generate
+
+    @property
+    def client(self) -> OpenAI:
+        if self._client is None:
+            if not self.settings.openai_api_key:
+                raise RuntimeError("OPENAI_API_KEY is not set")
+            self._client = OpenAI(
+                api_key=self.settings.openai_api_key,
+                timeout=self.settings.llm_timeout_seconds,
+            )
+        return self._client
 
     def review_diff_text(self, raw_diff: str) -> ReviewResult:
         """
@@ -84,7 +96,6 @@ class Reviewer:
         max_lines = self.settings.max_diff_lines
         chunks = parsed.chunk_by_files(max_lines)
 
-        # Single file larger than the safe cap → refuse (no silent truncate).
         for chunk in chunks:
             if chunk.total_lines > max_lines:
                 paths = ", ".join(f.path for f in chunk.files)
@@ -138,20 +149,29 @@ class Reviewer:
         def _invoke() -> str:
             if self._llm_generate is not None:
                 return self._llm_generate(parsed)
-            return call_ollama(
-                base_url=self.settings.ollama_base_url,
-                model=self.settings.ollama_model,
-                system=system,
-                user=user,
-                timeout=self.settings.llm_timeout_seconds,
+            response = self.client.chat.completions.create(
+                model=self.settings.openai_model,
+                temperature=0,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
             )
+            content = response.choices[0].message.content
+            if not content:
+                raise RuntimeError(
+                    "OpenAI returned empty content "
+                    f"(model={self.settings.openai_model}, files={len(parsed.files)})"
+                )
+            return content.strip()
 
         return retry_with_timeout(
             _invoke,
             retries=self.settings.llm_max_retries,
             timeout_seconds=self.settings.llm_timeout_seconds,
             logger=self.logger,
-            operation="ollama.api.chat",
+            operation="openai.chat.completions.create",
         )
 
     @staticmethod
@@ -186,7 +206,7 @@ def review_diff_file(path: Path, settings: Settings | None = None) -> ReviewResu
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m review.reviewer",
-        description="AI code review for a unified git diff file (Ollama)",
+        description="AI code review for a unified git diff file (OpenAI)",
     )
     parser.add_argument(
         "--diff-file",

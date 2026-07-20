@@ -1,4 +1,4 @@
-"""Generate a unified git diff for CI review (PR base...HEAD or custom refs)."""
+"""Generate a unified git diff for CI review (base...HEAD or custom refs)."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ def generate_diff(base_ref: str, head_ref: str = "HEAD") -> str:
     """
     Return unified diff for ``base_ref...head_ref`` (merge-base triple-dot).
 
-    Prefer commit SHAs from the PR event when running in GitHub Actions.
+    Prefer commit SHAs from the push event when running in GitHub Actions.
     """
     logger.info("Generating diff: %s...%s", base_ref, head_ref)
     return run_git(["diff", "--no-ext-diff", f"{base_ref}...{head_ref}"])
@@ -97,7 +97,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path(os.environ.get("DIFF_OUTPUT", "artifacts/pr.diff")),
+        default=Path(os.environ.get("DIFF_OUTPUT", "artifacts/push.diff")),
         help="Where to write the unified diff",
     )
     parser.add_argument(

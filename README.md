@@ -1,99 +1,66 @@
 # AI-Powered CI/CD Pipeline
 
-Automated PR code review with **Ollama** (`granite3.2:latest` — lightweight 8B model), then (later phases) auto-merge and
-server deployment via GitHub Actions.
+Automated push-based code review with **OpenAI** and **squash auto-merge on PASS**.
 
-## Architecture (current)
+Deploy to server is deferred for later.
+
+## Architecture
 
 ```
-Developer → feature branch → Open PR → main
+Developer → push to feature branch (not main)
                 ↓
-     Workflow: ai-review.yml  (Phase 2)
+     Workflow: ai-review.yml
                 ↓
-     checkout → git diff(base...head) → review/ (Phase 1)
+     git diff vs main → OpenAI review → PASS / FAIL
                 ↓
-     Ollama HTTP (10.28.81.52:11434)
+     Workflow logs + step summary
                 ↓
-          PASS / FAIL
-                ↓
-     PR comment + Actions summary + logs
+     PASS → squash merge into main
+     FAIL → stop (no merge)
 ```
 
-## LLM provider: Ollama
+No pull request is required — the pipeline runs on every push to a non-`main` branch.
 
-Reviews call your Ollama server over HTTP:
+## Auto-merge (squash)
 
-```python
-POST {OLLAMA_BASE_URL}/api/chat
-{
-  "model": "granite3.2:latest",
-  "messages": [{"role": "system", ...}, {"role": "user", ...}],
-  "stream": false,
-  "format": "json"
-}
-```
+| Setting | Value |
+|---------|--------|
+| Strategy | `git merge --squash` into `main`, then push |
+| On **PASS** | Branch squash-merged into `main` automatically |
+| On **FAIL** | Workflow fails; merge blocked; feedback in logs |
+| Infrastructure failure | Never merges (fail-closed) |
 
-Defaults (override via env):
+## GitHub Secrets
 
-| Variable | Default |
-|----------|---------|
-| `OLLAMA_BASE_URL` | `http://10.28.81.52:11434` |
-| `OLLAMA_MODEL` | `granite3.2:latest` |
+| Secret | Purpose |
+|--------|---------|
+| `OPENAI_API_KEY` | OpenAI API key |
 
-No API key required — the runner must reach the Ollama host on your network.
+`GITHUB_TOKEN` is provided by Actions. The review workflow needs `contents: write` to push the squash merge to `main`.
 
-## Phase 1 — Local review core
+## How to use
+
+1. Push commits to a feature branch (not `main`)
+2. AI review runs on the diff against `main`
+3. **PASS** → branch squash-merged into `main` automatically
+4. **FAIL** → fix code and push again; feedback appears in workflow logs
+
+## Local usage
 
 ```bash
 pip install -e ".[dev]"
 pytest -q
+export OPENAI_API_KEY=sk-...
 python -m review.reviewer --diff-file tests/sample_diffs/clean_code.diff --json
+python scripts/merge_branch.py --result-file artifacts/review_result.json --branch feature-x --dry-run
 ```
-
-Live review (Ollama must be running and reachable):
-
-```bash
-export OLLAMA_BASE_URL=http://10.28.81.52:11434
-export OLLAMA_MODEL=granite3.2:latest
-python -m review.reviewer --diff-file tests/sample_diffs/sql_injection.diff --json
-```
-
-## Phase 2 — GitHub Actions AI review
-
-Workflow: `.github/workflows/ai-review.yml`
-
-| Script | Role |
-|--------|------|
-| `scripts/generate_diff.py` | PR diff + changed-file logging |
-| `scripts/run_ai_review.py` | Ollama review → `artifacts/review_result.json` |
-| `scripts/publish_review.py` | PR comment + step summary |
-
-### GitHub configuration
-
-| Name | Purpose |
-|------|---------|
-| `OLLAMA_BASE_URL` (secret or repo variable) | e.g. `http://10.28.81.52:11434` |
-
-**Note:** GitHub-hosted runners cannot reach private IPs unless you use a **self-hosted runner** on the same network as Ollama.
 
 ## Environment variables
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `OLLAMA_BASE_URL` | `http://10.28.81.52:11434` | Ollama server URL |
-| `OLLAMA_MODEL` | `granite3.2:latest` | Model name |
+| `OPENAI_API_KEY` | _(required)_ | OpenAI API key |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Model id |
 | `MAX_DIFF_LINES` | `2000` | Diff size cap |
-| `LLM_TIMEOUT_SECONDS` | `60` | HTTP timeout |
-| `LLM_MAX_RETRIES` | `2` | Retries after failure |
-| `LOG_LEVEL` | `INFO` | Logging verbosity |
-| `REVIEW_IGNORE_EXTRA` | _(empty)_ | Extra ignore globs |
-
-## Layout
-
-```
-review/ollama_client.py   # Ollama HTTP client
-review/reviewer.py        # orchestration
-.github/workflows/ai-review.yml
-scripts/
-tests/
-```
+| `LLM_TIMEOUT_SECONDS` | `90` | LLM timeout |
+| `LOG_LEVEL` | `INFO` | Logging level |
