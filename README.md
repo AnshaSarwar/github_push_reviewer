@@ -60,7 +60,7 @@ python scripts/merge_branch.py --result-file artifacts/review_result.json --bran
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `GROQ_API_KEY` | _(required)_ | Groq API key |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model id |
+| `GROQ_MODEL` | `groq/compound-mini` | Groq model id |
 | `GROQ_BASE_URL` | `https://api.groq.com/openai/v1` | Groq OpenAI-compatible API base URL |
 | `MAX_DIFF_LINES` | `2000` | Diff size cap |
 | `LLM_TIMEOUT_SECONDS` | `90` | LLM timeout |

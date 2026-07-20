@@ -31,6 +31,25 @@ from review.prompt import build_system_prompt, build_user_prompt
 from review.utils import mask_secrets, retry_with_timeout, setup_logging
 
 
+def _model_supports_json_mode(model: str) -> bool:
+    """Groq compound systems do not support response_format json_object."""
+    base = model.rsplit("/", 1)[-1]
+    return base not in {"compound", "compound-mini"}
+
+
+def _extract_json_text(raw: str) -> str:
+    """Strip optional markdown fences from LLM output."""
+    text = raw.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    return text
+
+
 class Reviewer:
     """Groq-backed code reviewer with fail-closed semantics."""
 
@@ -130,7 +149,7 @@ class Reviewer:
 
     def _review_single_chunk(self, parsed: ParsedDiff) -> ReviewResult:
         try:
-            raw_text = self._call_llm(parsed)
+            raw_text = _extract_json_text(self._call_llm(parsed))
             payload = LLMReviewPayload.model_validate_json(raw_text)
             return finalize_from_llm(payload)
         except ValidationError as exc:
@@ -150,15 +169,18 @@ class Reviewer:
         def _invoke() -> str:
             if self._llm_generate is not None:
                 return self._llm_generate(parsed)
-            response = self.client.chat.completions.create(
-                model=self.settings.groq_model,
-                temperature=0,
-                response_format={"type": "json_object"},
-                messages=[
+            request_kwargs: dict[str, Any] = {
+                "model": self.settings.groq_model,
+                "temperature": 0,
+                "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
                 ],
-            )
+            }
+            if _model_supports_json_mode(self.settings.groq_model):
+                request_kwargs["response_format"] = {"type": "json_object"}
+
+            response = self.client.chat.completions.create(**request_kwargs)
             content = response.choices[0].message.content
             if not content:
                 raise RuntimeError(
