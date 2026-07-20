@@ -1,4 +1,4 @@
-"""Prompt construction for Groq LLM code review."""
+"""Prompt construction for OpenAI code review."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ Hard rules:
    - MEDIUM: clear maintainability or correctness risks.
    - LOW: style, docs, minor suggestions.
 5. Do NOT mark these as HIGH/CRITICAL:
-   - Using GitHub Actions secrets like ${{ secrets.GROQ_API_KEY }} (that is correct).
+   - Using GitHub Actions secrets like ${{ secrets.OPENAI_API_KEY }} (that is correct).
    - Missing validation you cannot see outside the diff.
    - Documentation wording or test rename nits.
 6. If the change is safe with only minor notes, use LOW severities (or empty issues)

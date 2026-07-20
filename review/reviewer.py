@@ -1,5 +1,5 @@
 """
-Orchestrate filtered-diff → Groq LLM → validated ReviewResult.
+Orchestrate filtered-diff → OpenAI → validated ReviewResult.
 
 This module has no git / GitHub / CI knowledge. Callers supply raw diff text.
 """
@@ -31,27 +31,8 @@ from review.prompt import build_system_prompt, build_user_prompt
 from review.utils import mask_secrets, retry_with_timeout, setup_logging
 
 
-def _model_supports_json_mode(model: str) -> bool:
-    """Groq compound systems do not support response_format json_object."""
-    base = model.rsplit("/", 1)[-1]
-    return base not in {"compound", "compound-mini"}
-
-
-def _extract_json_text(raw: str) -> str:
-    """Strip optional markdown fences from LLM output."""
-    text = raw.strip()
-    if text.startswith("```"):
-        lines = text.splitlines()
-        if lines and lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        text = "\n".join(lines).strip()
-    return text
-
-
 class Reviewer:
-    """Groq-backed code reviewer with fail-closed semantics."""
+    """OpenAI-backed code reviewer with fail-closed semantics."""
 
     def __init__(
         self,
@@ -67,11 +48,10 @@ class Reviewer:
     @property
     def client(self) -> OpenAI:
         if self._client is None:
-            if not self.settings.groq_api_key:
-                raise RuntimeError("GROQ_API_KEY is not set")
+            if not self.settings.openai_api_key:
+                raise RuntimeError("OPENAI_API_KEY is not set")
             self._client = OpenAI(
-                api_key=self.settings.groq_api_key,
-                base_url=self.settings.groq_base_url,
+                api_key=self.settings.openai_api_key,
                 timeout=self.settings.llm_timeout_seconds,
             )
         return self._client
@@ -149,7 +129,7 @@ class Reviewer:
 
     def _review_single_chunk(self, parsed: ParsedDiff) -> ReviewResult:
         try:
-            raw_text = _extract_json_text(self._call_llm(parsed))
+            raw_text = self._call_llm(parsed)
             payload = LLMReviewPayload.model_validate_json(raw_text)
             return finalize_from_llm(payload)
         except ValidationError as exc:
@@ -169,23 +149,20 @@ class Reviewer:
         def _invoke() -> str:
             if self._llm_generate is not None:
                 return self._llm_generate(parsed)
-            request_kwargs: dict[str, Any] = {
-                "model": self.settings.groq_model,
-                "temperature": 0,
-                "messages": [
+            response = self.client.chat.completions.create(
+                model=self.settings.openai_model,
+                temperature=0,
+                response_format={"type": "json_object"},
+                messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
                 ],
-            }
-            if _model_supports_json_mode(self.settings.groq_model):
-                request_kwargs["response_format"] = {"type": "json_object"}
-
-            response = self.client.chat.completions.create(**request_kwargs)
+            )
             content = response.choices[0].message.content
             if not content:
                 raise RuntimeError(
-                    "Groq returned empty content "
-                    f"(model={self.settings.groq_model}, files={len(parsed.files)})"
+                    "OpenAI returned empty content "
+                    f"(model={self.settings.openai_model}, files={len(parsed.files)})"
                 )
             return content.strip()
 
@@ -194,7 +171,7 @@ class Reviewer:
             retries=self.settings.llm_max_retries,
             timeout_seconds=self.settings.llm_timeout_seconds,
             logger=self.logger,
-            operation="groq.chat.completions.create",
+            operation="openai.chat.completions.create",
         )
 
     @staticmethod
@@ -229,7 +206,7 @@ def review_diff_file(path: Path, settings: Settings | None = None) -> ReviewResu
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m review.reviewer",
-        description="AI code review for a unified git diff file (Groq)",
+        description="AI code review for a unified git diff file (OpenAI)",
     )
     parser.add_argument(
         "--diff-file",

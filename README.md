@@ -1,6 +1,6 @@
 # AI-Powered CI/CD Pipeline
 
-Automated push-based code review with **Groq** and **squash auto-merge on PASS**.
+Automated push-based code review with **OpenAI** and **squash auto-merge on PASS**.
 
 Deploy to server is deferred for later.
 
@@ -11,7 +11,7 @@ Developer → push to feature branch (not main)
                 ↓
      Workflow: ai-review.yml
                 ↓
-     git diff vs main → Groq review → PASS / FAIL
+     git diff vs main → OpenAI review → PASS / FAIL
                 ↓
      Workflow logs + step summary
                 ↓
@@ -34,7 +34,7 @@ No pull request is required — the pipeline runs on every push to a non-`main` 
 
 | Secret | Purpose |
 |--------|---------|
-| `GROQ_API_KEY` | Groq API key |
+| `OPENAI_API_KEY` | OpenAI API key |
 
 `GITHUB_TOKEN` is provided by Actions. The review workflow needs `contents: write` to push the squash merge to `main`.
 
@@ -50,7 +50,7 @@ No pull request is required — the pipeline runs on every push to a non-`main` 
 ```bash
 pip install -e ".[dev]"
 pytest -q
-export GROQ_API_KEY=gsk_...
+export OPENAI_API_KEY=sk-...
 python -m review.reviewer --diff-file tests/sample_diffs/clean_code.diff --json
 python scripts/merge_branch.py --result-file artifacts/review_result.json --branch feature-x --dry-run
 ```
@@ -59,9 +59,8 @@ python scripts/merge_branch.py --result-file artifacts/review_result.json --bran
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `GROQ_API_KEY` | _(required)_ | Groq API key |
-| `GROQ_MODEL` | `groq/compound-mini` | Groq model id |
-| `GROQ_BASE_URL` | `https://api.groq.com/openai/v1` | Groq OpenAI-compatible API base URL |
+| `OPENAI_API_KEY` | _(required)_ | OpenAI API key |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Model id |
 | `MAX_DIFF_LINES` | `2000` | Diff size cap |
 | `LLM_TIMEOUT_SECONDS` | `90` | LLM timeout |
 | `LOG_LEVEL` | `INFO` | Logging level |

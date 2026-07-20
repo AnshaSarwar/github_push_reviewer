@@ -14,11 +14,11 @@ concurrency:
 
 jobs:
   ai-review:
-    name: Review push diff with Groq
+    name: Review push diff with OpenAI
     runs-on: ubuntu-latest
     env:
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-      GROQ_MODEL: groq/compound-mini
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_MODEL: gpt-4o-mini
       LOG_LEVEL: INFO
       DIFF_OUTPUT: artifacts/push.diff
       FILES_OUTPUT: artifacts/changed_files.txt
