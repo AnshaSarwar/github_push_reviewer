@@ -24,7 +24,7 @@ jobs:
       FILES_OUTPUT: artifacts/changed_files.txt
       REVIEW_RESULT_FILE: artifacts/review_result.json
       REVIEW_BASE_SHA: origin/main
-      REVIEW_HEAD_SHA: ${{ github.sha }}
+      REVIEW_HEAD_SHA: ${{ github.sha }} 
       BRANCH_NAME: ${{ github.ref_name }}
 
     steps:
@@ -91,3 +91,57 @@ jobs:
         run: |
           echo "AI review decision is FAIL (exit ${{ steps.review.outputs.exit_code }}). Merge blocked."
           exit 1
+  deploy:
+    name: Deploy to Killercoda
+    needs: ai-review
+    runs_on: [self-hosted, linux, x64]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout merged main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Build Docker image
+        run: |
+          set -euo pipefail
+          docker build \
+            --tag "push-reviewer:${GITHUB_SHA}" \
+            --tag "push-reviewer:latest" \
+            .
+      - name: Replace running container
+        run: |
+          set -euo pipefail
+          docker rm --force push-reviewer 2>/dev/null || true
+          docker run \
+            --detach \
+            --name push-reviewer \
+            --restart unless-stopped \
+            --publish 8080:8080 \
+            "push-reviewer:${GITHUB_SHA}"
+      - name: Verify deployment
+        run: |
+          set -euo pipefail
+          for attempt in {1..10}; do
+            if curl --fail --silent http://localhost:8080/health; then
+              echo
+              echo "Deployment verified successfully."
+              exit 0
+            fi
+            echo "Health check attempt ${attempt} failed."
+            sleep 2
+          done
+          echo "Deployment health check failed."
+          docker logs push-reviewer
+          exit 1
+      - name: Publish deployment summary
+        if: always()
+        run: |
+          {
+            echo "## Killercoda deployment"
+            echo
+            echo "- Status: **${{ job.status }}**"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Container: \`push-reviewer\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+

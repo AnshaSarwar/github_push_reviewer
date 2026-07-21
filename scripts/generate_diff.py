@@ -1,7 +1,5 @@
 """Generate a unified git diff for CI review (base...HEAD or custom refs)."""
 
-from __future__ import annotations
-
 import argparse
 import logging
 import os
@@ -15,7 +13,7 @@ from review.utils import setup_logging
 REPO_ROOT = Path(__file__).resolve().parent.parent
 logger = logging.getLogger("review.ci.diff")
 
-
+# Run a git command and return the output
 def run_git(args: list[str], *, cwd: Path = REPO_ROOT) -> str:
     result = subprocess.run(
         ["git", *args],
@@ -28,7 +26,7 @@ def run_git(args: list[str], *, cwd: Path = REPO_ROOT) -> str:
         raise RuntimeError(result.stderr.strip() or f"git {' '.join(args)} failed")
     return result.stdout
 
-
+# Generate a unified git diff for CI review (base...HEAD or custom refs).
 def generate_diff(base_ref: str, head_ref: str = "HEAD") -> str:
     """
     Return unified diff for ``base_ref...head_ref`` (merge-base triple-dot).
@@ -38,12 +36,12 @@ def generate_diff(base_ref: str, head_ref: str = "HEAD") -> str:
     logger.info("Generating diff: %s...%s", base_ref, head_ref)
     return run_git(["diff", "--no-ext-diff", f"{base_ref}...{head_ref}"])
 
-
+# List changed files in a diff
 def list_changed_files(raw_diff: str) -> list[str]:
     parsed = parse_diff(raw_diff)
     return [f.path for f in parsed.files]
 
-
+# Write outputs to files
 def write_outputs(
     raw_diff: str,
     *,
