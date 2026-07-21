@@ -94,7 +94,7 @@ jobs:
   deploy:
     name: Deploy to Killercoda
     needs: ai-review
-    runs_on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, linux, x64]
     timeout-minutes: 10
     steps:
       - name: Checkout merged main branch
